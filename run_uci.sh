@@ -1,3 +1,3 @@
 #!/bin/bash
 set -ex
-cargo run
+cargo run --release
