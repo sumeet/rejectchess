@@ -1,32 +1,8 @@
 use crate::board::{in_bounds, piece_at, set_piece, Board, Color, Piece, PieceKind, Square};
+use crate::dirs::{BISHOP_DIRS, KING_DIRS, KNIGHT_DIRS, ROOK_DIRS};
 use crate::movegen;
 use crate::moves::{Move, MoveKind};
 use crate::state::{CastlingRights, GameState};
-
-const KNIGHT_DIRS: [(i8, i8); 8] = [
-    (1, 2),
-    (2, 1),
-    (-1, 2),
-    (-2, 1),
-    (1, -2),
-    (2, -1),
-    (-1, -2),
-    (-2, -1),
-];
-
-const KING_DIRS: [(i8, i8); 8] = [
-    (-1, -1),
-    (0, -1),
-    (1, -1),
-    (-1, 0),
-    (1, 0),
-    (-1, 1),
-    (0, 1),
-    (1, 1),
-];
-
-const BISHOP_DIRS: [(i8, i8); 4] = [(1, 1), (1, -1), (-1, 1), (-1, -1)];
-const ROOK_DIRS: [(i8, i8); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
 pub fn legal_moves(state: &GameState) -> Vec<Move> {
     movegen::generate_candidates(state)
@@ -97,12 +73,11 @@ pub fn apply_move_unchecked(state: &mut GameState, mv: Move) {
             set_piece(&mut state.board, from, None);
             set_piece(&mut state.board, to, Some(moving_piece));
         }
-        MoveKind::Promotion | MoveKind::PromotionCapture => {
-            if mv.kind == MoveKind::PromotionCapture {
+        MoveKind::Promotion(promo) => {
+            if let Some(target) = piece_at(&state.board, to) {
                 captured_square = Some(to);
-                captured_piece = piece_at(&state.board, to);
+                captured_piece = Some(target);
             }
-            let promo = mv.promotion.expect("missing promotion piece");
             let promoted = Piece {
                 color: moving_piece.color,
                 kind: promo,
@@ -110,10 +85,10 @@ pub fn apply_move_unchecked(state: &mut GameState, mv: Move) {
             set_piece(&mut state.board, from, None);
             set_piece(&mut state.board, to, Some(promoted));
         }
-        MoveKind::Quiet | MoveKind::Capture => {
-            if mv.kind == MoveKind::Capture {
+        MoveKind::Normal => {
+            if let Some(target) = piece_at(&state.board, to) {
                 captured_square = Some(to);
-                captured_piece = piece_at(&state.board, to);
+                captured_piece = Some(target);
             }
             set_piece(&mut state.board, from, None);
             set_piece(&mut state.board, to, Some(moving_piece));
@@ -125,9 +100,9 @@ pub fn apply_move_unchecked(state: &mut GameState, mv: Move) {
         update_castling_rights_on_capture(state, square, piece);
     }
 
-    if moving_piece.kind == PieceKind::Pawn && mv.kind == MoveKind::Quiet {
+    if moving_piece.kind == PieceKind::Pawn && mv.kind == MoveKind::Normal {
         let rank_diff = (to.1 as i8 - from.1 as i8).abs();
-        if rank_diff == 2 {
+        if from.0 == to.0 && rank_diff == 2 {
             let mid_rank = (to.1 + from.1) / 2;
             state.en_passant = Some((from.0, mid_rank));
         }
@@ -137,9 +112,7 @@ pub fn apply_move_unchecked(state: &mut GameState, mv: Move) {
 }
 
 pub fn is_in_check(state: &GameState, color: Color) -> bool {
-    let Some(king_sq) = find_king(&state.board, color) else {
-        return false;
-    };
+    let king_sq = find_king(&state.board, color).expect("missing king");
     is_square_attacked(state, king_sq, color.opposite())
 }
 
@@ -196,38 +169,46 @@ pub fn is_square_attacked(state: &GameState, square: Square, by_color: Color) ->
         }
     }
 
-    if ray_attacked(state, square, by_color, &BISHOP_DIRS, PieceKind::Bishop) {
-        return true;
-    }
-    if ray_attacked(state, square, by_color, &BISHOP_DIRS, PieceKind::Queen) {
-        return true;
-    }
-    if ray_attacked(state, square, by_color, &ROOK_DIRS, PieceKind::Rook) {
-        return true;
-    }
-    if ray_attacked(state, square, by_color, &ROOK_DIRS, PieceKind::Queen) {
-        return true;
-    }
-
-    false
+    diagonal_attacked(state, square, by_color) || orthogonal_attacked(state, square, by_color)
 }
 
-fn ray_attacked(
-    state: &GameState,
-    square: Square,
-    by_color: Color,
-    dirs: &[(i8, i8)],
-    kind: PieceKind,
-) -> bool {
+fn diagonal_attacked(state: &GameState, square: Square, by_color: Color) -> bool {
     let file = square.0 as i8;
     let rank = square.1 as i8;
-    for (df, dr) in dirs {
+    for (df, dr) in BISHOP_DIRS {
         let mut nf = file + df;
         let mut nr = rank + dr;
         while in_bounds(nf, nr) {
             let sq = (nf as u8, nr as u8);
             if let Some(piece) = piece_at(&state.board, sq) {
-                return piece.color == by_color && piece.kind == kind;
+                if piece.color == by_color
+                    && matches!(piece.kind, PieceKind::Bishop | PieceKind::Queen)
+                {
+                    return true;
+                }
+                break;
+            }
+            nf += df;
+            nr += dr;
+        }
+    }
+    false
+}
+
+fn orthogonal_attacked(state: &GameState, square: Square, by_color: Color) -> bool {
+    let file = square.0 as i8;
+    let rank = square.1 as i8;
+    for (df, dr) in ROOK_DIRS {
+        let mut nf = file + df;
+        let mut nr = rank + dr;
+        while in_bounds(nf, nr) {
+            let sq = (nf as u8, nr as u8);
+            if let Some(piece) = piece_at(&state.board, sq) {
+                if piece.color == by_color && matches!(piece.kind, PieceKind::Rook | PieceKind::Queen)
+                {
+                    return true;
+                }
+                break;
             }
             nf += df;
             nr += dr;
@@ -303,5 +284,174 @@ fn clear_castling_rights(castling: &mut CastlingRights, color: Color) {
             castling.black_kingside = false;
             castling.black_queenside = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::board::set_piece;
+
+    fn empty_state(side: Color) -> GameState {
+        GameState {
+            board: [[None; 8]; 8],
+            side_to_move: side,
+            castling: CastlingRights {
+                white_kingside: false,
+                white_queenside: false,
+                black_kingside: false,
+                black_queenside: false,
+            },
+            en_passant: None,
+        }
+    }
+
+    #[test]
+    fn castling_through_check_is_illegal() {
+        let mut state = empty_state(Color::White);
+        state.castling.white_kingside = true;
+
+        set_piece(
+            &mut state.board,
+            (4, 0),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::King,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (7, 0),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::Rook,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (5, 7),
+            Some(Piece {
+                color: Color::Black,
+                kind: PieceKind::Rook,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (4, 7),
+            Some(Piece {
+                color: Color::Black,
+                kind: PieceKind::King,
+            }),
+        );
+
+        let moves = legal_moves(&state);
+        assert!(!moves
+            .iter()
+            .any(|mv| matches!(mv.kind, MoveKind::CastleKingside)));
+    }
+
+    #[test]
+    fn en_passant_exposing_check_is_illegal() {
+        let mut state = empty_state(Color::White);
+        state.en_passant = Some((3, 5));
+
+        set_piece(
+            &mut state.board,
+            (4, 0),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::King,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (4, 4),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::Pawn,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (3, 4),
+            Some(Piece {
+                color: Color::Black,
+                kind: PieceKind::Pawn,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (4, 7),
+            Some(Piece {
+                color: Color::Black,
+                kind: PieceKind::Rook,
+            }),
+        );
+
+        let moves = legal_moves(&state);
+        assert!(!moves.iter().any(|mv| {
+            mv.from == (4, 4)
+                && mv.to == (3, 5)
+                && matches!(mv.kind, MoveKind::EnPassant)
+        }));
+    }
+
+    #[test]
+    fn promotion_moves_generated() {
+        let mut state = empty_state(Color::White);
+
+        set_piece(
+            &mut state.board,
+            (4, 0),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::King,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (4, 7),
+            Some(Piece {
+                color: Color::Black,
+                kind: PieceKind::King,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (0, 6),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::Pawn,
+            }),
+        );
+        set_piece(
+            &mut state.board,
+            (1, 7),
+            Some(Piece {
+                color: Color::Black,
+                kind: PieceKind::Rook,
+            }),
+        );
+
+        let moves = legal_moves(&state);
+        let quiet_promotions = moves
+            .iter()
+            .filter(|mv| {
+                mv.from == (0, 6)
+                    && mv.to == (0, 7)
+                    && matches!(mv.kind, MoveKind::Promotion(_))
+            })
+            .count();
+        let capture_promotions = moves
+            .iter()
+            .filter(|mv| {
+                mv.from == (0, 6)
+                    && mv.to == (1, 7)
+                    && matches!(mv.kind, MoveKind::Promotion(_))
+            })
+            .count();
+
+        assert_eq!(quiet_promotions, 4);
+        assert_eq!(capture_promotions, 4);
     }
 }

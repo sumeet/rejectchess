@@ -2,19 +2,16 @@ use crate::board::{PieceKind, Square};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MoveKind {
-    Quiet,
-    Capture,
+    Normal,
     EnPassant,
     CastleKingside,
     CastleQueenside,
-    Promotion,
-    PromotionCapture,
+    Promotion(PieceKind),
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Move {
     pub from: Square,
     pub to: Square,
-    pub promotion: Option<PieceKind>,
     pub kind: MoveKind,
 }

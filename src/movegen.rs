@@ -1,41 +1,7 @@
 use crate::board::{in_bounds, piece_at, Color, Piece, PieceKind, Square};
+use crate::dirs::{BISHOP_DIRS, KING_DIRS, KNIGHT_DIRS, QUEEN_DIRS, ROOK_DIRS};
 use crate::moves::{Move, MoveKind};
 use crate::state::GameState;
-
-const KNIGHT_DIRS: [(i8, i8); 8] = [
-    (1, 2),
-    (2, 1),
-    (-1, 2),
-    (-2, 1),
-    (1, -2),
-    (2, -1),
-    (-1, -2),
-    (-2, -1),
-];
-
-const KING_DIRS: [(i8, i8); 8] = [
-    (-1, -1),
-    (0, -1),
-    (1, -1),
-    (-1, 0),
-    (1, 0),
-    (-1, 1),
-    (0, 1),
-    (1, 1),
-];
-
-const BISHOP_DIRS: [(i8, i8); 4] = [(1, 1), (1, -1), (-1, 1), (-1, -1)];
-const ROOK_DIRS: [(i8, i8); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
-const QUEEN_DIRS: [(i8, i8); 8] = [
-    (1, 0),
-    (-1, 0),
-    (0, 1),
-    (0, -1),
-    (1, 1),
-    (1, -1),
-    (-1, 1),
-    (-1, -1),
-];
 
 const PROMOTION_PIECES: [PieceKind; 4] = [
     PieceKind::Queen,
@@ -81,14 +47,14 @@ fn gen_pawn_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
         let to = (file as u8, one_rank as u8);
         if piece_at(&state.board, to).is_none() {
             if to.1 == last_rank {
-                add_promotion_moves(moves, from, to, false);
+                add_promotion_moves(moves, from, to);
             } else {
-                push_move(moves, from, to, MoveKind::Quiet, None);
+                push_move(moves, from, to, MoveKind::Normal);
                 if from.1 == start_rank {
                     let two_rank = rank + dir * 2;
                     let to_two = (file as u8, two_rank as u8);
                     if in_bounds(file, two_rank) && piece_at(&state.board, to_two).is_none() {
-                        push_move(moves, from, to_two, MoveKind::Quiet, None);
+                        push_move(moves, from, to_two, MoveKind::Normal);
                     }
                 }
             }
@@ -105,9 +71,9 @@ fn gen_pawn_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
         if let Some(target) = piece_at(&state.board, to) {
             if target.color != piece.color {
                 if to.1 == last_rank {
-                    add_promotion_moves(moves, from, to, true);
+                    add_promotion_moves(moves, from, to);
                 } else {
-                    push_move(moves, from, to, MoveKind::Capture, None);
+                    push_move(moves, from, to, MoveKind::Normal);
                 }
             }
         }
@@ -117,7 +83,7 @@ fn gen_pawn_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
         let ep_file = ep.0 as i8;
         let ep_rank = ep.1 as i8;
         if ep_rank == rank + dir && (ep_file - file).abs() == 1 {
-            push_move(moves, from, ep, MoveKind::EnPassant, None);
+            push_move(moves, from, ep, MoveKind::EnPassant);
         }
     }
 }
@@ -155,11 +121,11 @@ fn gen_slider_moves(
             let to = (nf as u8, nr as u8);
             if let Some(target) = piece_at(&state.board, to) {
                 if target.color != piece.color {
-                    push_move(moves, from, to, MoveKind::Capture, None);
+                    push_move(moves, from, to, MoveKind::Normal);
                 }
                 break;
             } else {
-                push_move(moves, from, to, MoveKind::Quiet, None);
+                push_move(moves, from, to, MoveKind::Normal);
             }
             nf += df;
             nr += dr;
@@ -193,7 +159,7 @@ fn gen_king_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
                     && piece_at(&state.board, (6, 0)).is_none()
                     && piece_at(&state.board, (7, 0)) == Some(rook)
                 {
-                    push_move(moves, from, (6, 0), MoveKind::CastleKingside, None);
+                    push_move(moves, from, (6, 0), MoveKind::CastleKingside);
                 }
             }
             if from == (4, 0) && state.castling.white_queenside {
@@ -202,7 +168,7 @@ fn gen_king_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
                     && piece_at(&state.board, (3, 0)).is_none()
                     && piece_at(&state.board, (0, 0)) == Some(rook)
                 {
-                    push_move(moves, from, (2, 0), MoveKind::CastleQueenside, None);
+                    push_move(moves, from, (2, 0), MoveKind::CastleQueenside);
                 }
             }
         }
@@ -212,7 +178,7 @@ fn gen_king_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
                     && piece_at(&state.board, (6, 7)).is_none()
                     && piece_at(&state.board, (7, 7)) == Some(rook)
                 {
-                    push_move(moves, from, (6, 7), MoveKind::CastleKingside, None);
+                    push_move(moves, from, (6, 7), MoveKind::CastleKingside);
                 }
             }
             if from == (4, 7) && state.castling.black_queenside {
@@ -221,7 +187,7 @@ fn gen_king_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
                     && piece_at(&state.board, (3, 7)).is_none()
                     && piece_at(&state.board, (0, 7)) == Some(rook)
                 {
-                    push_move(moves, from, (2, 7), MoveKind::CastleQueenside, None);
+                    push_move(moves, from, (2, 7), MoveKind::CastleQueenside);
                 }
             }
         }
@@ -231,29 +197,19 @@ fn gen_king_moves(state: &GameState, from: Square, moves: &mut Vec<Move>) {
 fn add_step_move(state: &GameState, piece: Piece, from: Square, to: Square, moves: &mut Vec<Move>) {
     if let Some(target) = piece_at(&state.board, to) {
         if target.color != piece.color {
-            push_move(moves, from, to, MoveKind::Capture, None);
+            push_move(moves, from, to, MoveKind::Normal);
         }
     } else {
-        push_move(moves, from, to, MoveKind::Quiet, None);
+        push_move(moves, from, to, MoveKind::Normal);
     }
 }
 
-fn add_promotion_moves(moves: &mut Vec<Move>, from: Square, to: Square, is_capture: bool) {
-    let kind = if is_capture {
-        MoveKind::PromotionCapture
-    } else {
-        MoveKind::Promotion
-    };
+fn add_promotion_moves(moves: &mut Vec<Move>, from: Square, to: Square) {
     for promo in PROMOTION_PIECES {
-        push_move(moves, from, to, kind, Some(promo));
+        push_move(moves, from, to, MoveKind::Promotion(promo));
     }
 }
 
-fn push_move(moves: &mut Vec<Move>, from: Square, to: Square, kind: MoveKind, promotion: Option<PieceKind>) {
-    moves.push(Move {
-        from,
-        to,
-        promotion,
-        kind,
-    });
+fn push_move(moves: &mut Vec<Move>, from: Square, to: Square, kind: MoveKind) {
+    moves.push(Move { from, to, kind });
 }
