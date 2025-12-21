@@ -30,13 +30,11 @@ impl Game {
     }
 
     pub fn is_checkmate(&self) -> bool {
-        let in_check = rules::is_in_check(&self.state, self.state.side_to_move);
-        in_check && self.legal_moves().is_empty()
+        rules::is_checkmate(&self.state)
     }
 
     pub fn is_stalemate(&self) -> bool {
-        let in_check = rules::is_in_check(&self.state, self.state.side_to_move);
-        !in_check && self.legal_moves().is_empty()
+        rules::is_stalemate(&self.state)
     }
 }
 

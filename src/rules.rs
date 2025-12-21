@@ -11,6 +11,14 @@ pub fn legal_moves(state: &GameState) -> Vec<Move> {
         .collect()
 }
 
+pub fn is_checkmate(state: &GameState) -> bool {
+    is_in_check(state, state.side_to_move) && legal_moves(state).is_empty()
+}
+
+pub fn is_stalemate(state: &GameState) -> bool {
+    !is_in_check(state, state.side_to_move) && legal_moves(state).is_empty()
+}
+
 pub fn is_move_legal(state: &GameState, mv: Move) -> bool {
     let mover = state.side_to_move;
     if matches!(mv.kind, MoveKind::CastleKingside | MoveKind::CastleQueenside) {
