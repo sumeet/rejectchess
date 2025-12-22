@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use crate::board::PieceKind;
 use crate::game::{Game, IllegalMove};
 use crate::moves::Move;
@@ -5,7 +7,7 @@ use crate::rules;
 use crate::state::GameState;
 
 const MATE_SCORE: i32 = 1_000_000;
-const SEARCH_DEPTH: u8 = 5;
+const SEARCH_DEPTH: u8 = 6;
 
 pub struct Engine {
     game: Game,
@@ -36,20 +38,17 @@ impl Engine {
         if moves.is_empty() {
             return None;
         }
-        let mut best: Option<Move> = None;
-        let mut best_score = i32::MIN;
 
-        for mv in moves {
-            let mut next = self.game.state.clone();
-            rules::apply_move_unchecked(&mut next, mv);
-            let score = -search(&next, SEARCH_DEPTH.saturating_sub(1));
-            if best.is_none() || score > best_score {
-                best = Some(mv);
-                best_score = score;
-            }
-        }
-
-        best
+        moves
+            .par_iter()
+            .map(|&mv| {
+                let mut next = self.game.state.clone();
+                rules::apply_move_unchecked(&mut next, mv);
+                let score = -search(&next, SEARCH_DEPTH.saturating_sub(1));
+                (score, mv)
+            })
+            .max_by_key(|(score, _)| *score)
+            .map(|(_, mv)| mv)
     }
 }
 
