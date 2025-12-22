@@ -1,4 +1,4 @@
-use crate::board::{in_bounds, piece_at, set_piece, Board, Color, Piece, PieceKind, Square};
+use crate::board::{in_bounds, piece_at, set_piece, Color, Piece, PieceKind, Square};
 use crate::dirs::{BISHOP_DIRS, KING_DIRS, KNIGHT_DIRS, ROOK_DIRS};
 use crate::movegen;
 use crate::moves::{Move, MoveKind};
@@ -7,7 +7,14 @@ use crate::state::{CastlingRights, GameState};
 pub fn legal_moves(state: &GameState) -> Vec<Move> {
     movegen::generate_candidates(state)
         .into_iter()
-        .filter(|mv| is_move_legal(state, *mv))
+        .filter(|mv| try_apply_legal(state, *mv).is_some())
+        .collect()
+}
+
+pub fn legal_move_states(state: &GameState) -> Vec<(Move, GameState)> {
+    movegen::generate_candidates(state)
+        .into_iter()
+        .filter_map(|mv| try_apply_legal(state, mv).map(|next| (mv, next)))
         .collect()
 }
 
@@ -20,19 +27,27 @@ pub fn is_stalemate(state: &GameState) -> bool {
 }
 
 pub fn is_move_legal(state: &GameState, mv: Move) -> bool {
+    try_apply_legal(state, mv).is_some()
+}
+
+pub fn try_apply_legal(state: &GameState, mv: Move) -> Option<GameState> {
     let mover = state.side_to_move;
     if matches!(mv.kind, MoveKind::CastleKingside | MoveKind::CastleQueenside) {
         if is_in_check(state, mover) {
-            return false;
+            return None;
         }
         if king_passes_through_check(state, mv) {
-            return false;
+            return None;
         }
     }
 
     let mut next = state.clone();
     apply_move_unchecked(&mut next, mv);
-    !is_in_check(&next, mover)
+    if is_in_check(&next, mover) {
+        None
+    } else {
+        Some(next)
+    }
 }
 
 pub fn apply_move_unchecked(state: &mut GameState, mv: Move) {
@@ -103,6 +118,13 @@ pub fn apply_move_unchecked(state: &mut GameState, mv: Move) {
         }
     }
 
+    if moving_piece.kind == PieceKind::King {
+        match moving_piece.color {
+            Color::White => state.white_king = to,
+            Color::Black => state.black_king = to,
+        }
+    }
+
     update_castling_rights_on_move(state, moving_piece, from);
     if let (Some(square), Some(piece)) = (captured_square, captured_piece) {
         update_castling_rights_on_capture(state, square, piece);
@@ -120,7 +142,17 @@ pub fn apply_move_unchecked(state: &mut GameState, mv: Move) {
 }
 
 pub fn is_in_check(state: &GameState, color: Color) -> bool {
-    let king_sq = find_king(&state.board, color).expect("missing king");
+    let king_sq = match color {
+        Color::White => state.white_king,
+        Color::Black => state.black_king,
+    };
+    debug_assert_eq!(
+        piece_at(&state.board, king_sq),
+        Some(Piece {
+            color,
+            kind: PieceKind::King
+        })
+    );
     is_square_attacked(state, king_sq, color.opposite())
 }
 
@@ -225,22 +257,6 @@ fn orthogonal_attacked(state: &GameState, square: Square, by_color: Color) -> bo
     false
 }
 
-fn find_king(board: &Board, color: Color) -> Option<Square> {
-    for rank in 0..8 {
-        for file in 0..8 {
-            if board[rank][file]
-                == Some(Piece {
-                    color,
-                    kind: PieceKind::King,
-                })
-            {
-                return Some((file as u8, rank as u8));
-            }
-        }
-    }
-    None
-}
-
 fn king_passes_through_check(state: &GameState, mv: Move) -> bool {
     let mover = state.side_to_move;
     let rank = if mover == Color::White { 0 } else { 7 };
@@ -311,6 +327,8 @@ mod tests {
                 black_queenside: false,
             },
             en_passant: None,
+            white_king: (4, 0),
+            black_king: (4, 7),
         }
     }
 

@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 
-use crate::board::{piece_at, PieceKind};
+use crate::board::{PieceKind, piece_at};
 use crate::game::{Game, IllegalMove};
 use crate::moves::{Move, MoveKind};
 use crate::rules;
@@ -8,7 +8,7 @@ use crate::state::GameState;
 
 const MATE_SCORE: i32 = 1_000_000;
 const INF: i32 = 1_000_000_000;
-const SEARCH_DEPTH: u8 = 6;
+const SEARCH_DEPTH: u8 = 7;
 
 pub struct Engine {
     game: Game,
@@ -72,7 +72,7 @@ impl Engine {
 }
 
 fn search_ab(state: &GameState, depth: u8, mut alpha: i32, beta: i32) -> i32 {
-    let moves = rules::legal_moves(state);
+    let moves = rules::legal_move_states(state);
     if moves.is_empty() {
         return terminal_score(state);
     }
@@ -81,9 +81,7 @@ fn search_ab(state: &GameState, depth: u8, mut alpha: i32, beta: i32) -> i32 {
     }
 
     let mut best = i32::MIN;
-    for mv in moves {
-        let mut next = state.clone();
-        rules::apply_move_unchecked(&mut next, mv);
+    for (_mv, next) in moves {
         let score = -search_ab(&next, depth - 1, -beta, -alpha);
         if score > best {
             best = score;

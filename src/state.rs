@@ -25,6 +25,8 @@ pub struct GameState {
     pub side_to_move: Color,
     pub castling: CastlingRights,
     pub en_passant: Option<Square>,
+    pub white_king: Square,
+    pub black_king: Square,
 }
 
 impl GameState {
@@ -68,6 +70,8 @@ impl GameState {
             side_to_move: Color::White,
             castling: CastlingRights::new(),
             en_passant: None,
+            white_king: (4, 0),
+            black_king: (4, 7),
         }
     }
 }
