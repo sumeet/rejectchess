@@ -16,6 +16,12 @@ impl Game {
         }
     }
 
+    pub fn from_fen(fen: &str) -> Option<Self> {
+        Some(Self {
+            state: GameState::from_fen(fen)?,
+        })
+    }
+
     pub fn legal_moves(&self) -> Vec<Move> {
         rules::legal_moves(&self.state)
     }

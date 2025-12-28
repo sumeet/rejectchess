@@ -24,6 +24,16 @@ impl Engine {
         self.game = Game::new();
     }
 
+    pub fn set_fen(&mut self, fen: &str) -> bool {
+        match Game::from_fen(fen) {
+            Some(game) => {
+                self.game = game;
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn legal_moves(&self) -> Vec<Move> {
         self.game.legal_moves()
     }
@@ -35,7 +45,7 @@ impl Engine {
         Ok(())
     }
 
-    pub fn go(&self) -> Option<Move> {
+    pub fn go(&self) -> Option<(Move, i32)> {
         let moves = ordered_candidates(&self.game.state);
         if moves.is_empty() {
             return None;
@@ -71,12 +81,17 @@ impl Engine {
                 .max_by_key(|(score, _)| *score)
             {
                 if score > best_score {
+                    best_score = score;
                     best_move = Some(mv);
                 }
             }
         }
 
-        best_move
+        best_move.map(|mv| (mv, best_score))
+    }
+
+    pub fn search_depth(&self) -> u8 {
+        SEARCH_DEPTH
     }
 }
 

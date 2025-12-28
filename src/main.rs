@@ -1,3 +1,4 @@
+use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, Write};
 
 use rejectchess::board::{PieceKind, Square};
@@ -5,6 +6,7 @@ use rejectchess::engine::Engine;
 use rejectchess::moves::{Move, MoveKind};
 
 fn main() {
+    let mut log = open_log();
     let stdin = io::stdin();
     let mut engine = Engine::new();
     for line in stdin.lock().lines() {
@@ -13,12 +15,13 @@ fn main() {
         if line.is_empty() {
             continue;
         }
+        log_line(&mut log, "<<", line);
         if line == "uci" {
-            println!("id name rejectchess");
-            println!("id author unknown");
-            println!("uciok");
+            send(&mut log, "id name rejectchess");
+            send(&mut log, "id author unknown");
+            send(&mut log, "uciok");
         } else if line == "isready" {
-            println!("readyok");
+            send(&mut log, "readyok");
         } else if line == "ucinewgame" {
             engine.reset();
         } else if line.starts_with("position") {
@@ -26,8 +29,13 @@ fn main() {
         } else if line.starts_with("go") {
             let best = engine.go();
             match best {
-                Some(mv) => println!("bestmove {}", to_uci(mv)),
-                None => println!("bestmove 0000"),
+                Some((mv, score)) => {
+                    let depth = engine.search_depth();
+                    let mv_str = to_uci(mv);
+                    send(&mut log, &format!("info depth {} score cp {} pv {}", depth, score, mv_str));
+                    send(&mut log, &format!("bestmove {}", mv_str));
+                }
+                None => send(&mut log, "bestmove 0000"),
             }
         } else if line == "quit" {
             break;
@@ -36,17 +44,62 @@ fn main() {
     }
 }
 
+fn open_log() -> Option<File> {
+    if std::env::var("REJECTCHESS_DEBUG").is_err() {
+        return None;
+    }
+    let path = std::env::temp_dir().join("rejectchess.log");
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .ok()
+}
+
+fn log_line(log: &mut Option<File>, prefix: &str, msg: &str) {
+    if let Some(f) = log.as_mut() {
+        let _ = writeln!(f, "{} {}", prefix, msg);
+        let _ = f.flush();
+    }
+}
+
+fn send(log: &mut Option<File>, msg: &str) {
+    println!("{}", msg);
+    log_line(log, ">>", msg);
+}
+
 fn handle_position(line: &str, engine: &mut Engine) {
     let mut parts = line.split_whitespace();
     let _ = parts.next();
+
+    let mut moves_iter: Option<std::str::SplitWhitespace> = None;
+
     match parts.next() {
-        Some("startpos") => engine.reset(),
-        Some("fen") => return,
+        Some("startpos") => {
+            engine.reset();
+            if let Some("moves") = parts.next() {
+                moves_iter = Some(parts);
+            }
+        }
+        Some("fen") => {
+            let mut fen_parts = Vec::new();
+            for part in parts.by_ref() {
+                if part == "moves" {
+                    moves_iter = Some(parts);
+                    break;
+                }
+                fen_parts.push(part);
+            }
+            let fen = fen_parts.join(" ");
+            if !engine.set_fen(&fen) {
+                return;
+            }
+        }
         _ => return,
     }
 
-    if let Some("moves") = parts.next() {
-        for token in parts {
+    if let Some(moves) = moves_iter {
+        for token in moves {
             let legal = engine.legal_moves();
             let Some(mv) = parse_uci_move(token, &legal) else {
                 break;
